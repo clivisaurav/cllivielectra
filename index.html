@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Archer Defense Game</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #fff;
+    }
+    canvas {
+      display: block;
+      background: #fff;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    const GRAVITY = 0.3;
+    let health = 5;
+    let timeElapsed = 0;
+
+    const archer = {
+      x: 100,
+      y: canvas.height - 200,
+      draw() {
+        // Head
+        ctx.beginPath();
+        ctx.arc(this.x, this.y - 50, 15, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Body
+        ctx.beginPath();
+        ctx.moveTo(this.x, this.y - 35);
+        ctx.lineTo(this.x, this.y + 25);
+
+        // Arms with bow
+        ctx.moveTo(this.x, this.y - 20);
+        ctx.lineTo(this.x - 20, this.y);
+        ctx.moveTo(this.x, this.y - 20);
+        ctx.lineTo(this.x + 20, this.y);
+
+        // Bow
+        ctx.beginPath();
+        ctx.moveTo(this.x + 20, this.y);
+        ctx.quadraticCurveTo(this.x + 30, this.y - 20, this.x + 20, this.y - 40);
+        ctx.stroke();
+
+        // Bow string
+        ctx.beginPath();
+        ctx.moveTo(this.x + 20, this.y);
+        ctx.lineTo(this.x + 20, this.y - 40);
+        ctx.stroke();
+
+        // Legs
+        ctx.beginPath();
+        ctx.moveTo(this.x, this.y + 25);
+        ctx.lineTo(this.x - 15, this.y + 50);
+        ctx.moveTo(this.x, this.y + 25);
+        ctx.lineTo(this.x + 15, this.y + 50);
+        ctx.stroke();
+      }
+    };
+
+    const funnel = {
+      x: canvas.width / 2 - 100,
+      y: canvas.height - 100,
+      width: 80,
+      height: 120,
+      draw() {
+        ctx.beginPath();
+        ctx.moveTo(this.x, this.y);
+        ctx.bezierCurveTo(
+          this.x + 10,
+          this.y + 30,
+          this.x + this.width - 10,
+          this.y + 30,
+          this.x + this.width,
+          this.y
+        );
+        ctx.lineTo(this.x + this.width, this.y + this.height);
+        ctx.lineTo(this.x, this.y + this.height);
+        ctx.closePath();
+        ctx.stroke();
+
+        // ornament
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.width / 2, this.y + this.height - 30);
+        ctx.lineTo(this.x + 20, this.y + this.height - 60);
+        ctx.lineTo(this.x + this.width - 20, this.y + this.height - 60);
+        ctx.lineTo(this.x + this.width / 2, this.y + this.height - 30);
+        ctx.stroke();
+      }
+    };
+
+    let arrows = [];
+    let charging = false;
+    let chargeStart = 0;
+
+    const thieves = [];
+    class Thief {
+      constructor(speed, height) {
+        this.x = canvas.width;
+        this.y = canvas.height - 200 - height;
+        this.width = 20;
+        this.height = height;
+        this.speed = speed;
+      }
+      draw() {
+        ctx.beginPath();
+        ctx.rect(this.x, this.y, this.width, this.height);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(this.x + 10, this.y - 10, 10, 0, Math.PI * 2);
+        ctx.stroke();
+        // bag
+        ctx.beginPath();
+        ctx.arc(this.x + 20, this.y, 10, 0, Math.PI * 2);
+        ctx.fillStyle = "black";
+        ctx.fill();
+        ctx.fillStyle = "black";
+      }
+      update() {
+        this.x -= this.speed;
+      }
+    }
+
+    class Arrow {
+      constructor(power, angle) {
+        this.x = archer.x + 20;
+        this.y = archer.y - 30;
+        this.power = power;
+        this.angle = angle;
+        this.vx = Math.cos(angle) * power;
+        this.vy = Math.sin(angle) * power;
+      }
+      draw() {
+        const length = 40;
+        const tailWidth = 6;
+        const tipLength = 10;
+
+        const dx = Math.cos(this.angle);
+        const dy = Math.sin(this.angle);
+
+        const x2 = this.x + dx * length;
+        const y2 = this.y + dy * length;
+
+        // main shaft
+        ctx.beginPath();
+        ctx.lineWidth = 4;
+        ctx.moveTo(this.x, this.y);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+
+        // tip
+        ctx.beginPath();
+        ctx.moveTo(x2, y2);
+        ctx.lineTo(x2 - dx * tipLength - dy * 4, y2 - dy * tipLength + dx * 4);
+        ctx.lineTo(x2 - dx * tipLength + dy * 4, y2 - dy * tipLength - dx * 4);
+        ctx.closePath();
+        ctx.fillStyle = "black";
+        ctx.fill();
+
+        // feather tail
+        ctx.beginPath();
+        ctx.moveTo(this.x, this.y);
+        ctx.lineTo(this.x - dx * 10 + dy * tailWidth, this.y - dy * 10 - dx * tailWidth);
+        ctx.lineTo(this.x - dx * 10 - dy * tailWidth, this.y - dy * 10 + dx * tailWidth);
+        ctx.closePath();
+        ctx.fill();
+        ctx.lineWidth = 1;
+      }
+      update() {
+        this.vy += GRAVITY;
+        this.x += this.vx;
+        this.y += this.vy;
+      }
+    }
+
+    function spawnThief() {
+      let speed = 1 + timeElapsed / 10000;
+      let height = 40 + Math.random() * 30;
+      thieves.push(new Thief(speed, height));
+    }
+
+    let lastSpawn = 0;
+
+    function gameLoop(timestamp) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      archer.draw();
+      funnel.draw();
+
+      if (timestamp - lastSpawn > 3000 - Math.min(timeElapsed, 2000)) {
+        spawnThief();
+        lastSpawn = timestamp;
+      }
+
+      // update and draw arrows
+      arrows.forEach((arrow, arrowIndex) => {
+        arrow.update();
+        arrow.draw();
+
+        // collision
+        thieves.forEach((thief, thiefIndex) => {
+          if (
+            arrow.x > thief.x &&
+            arrow.x < thief.x + thief.width &&
+            arrow.y > thief.y &&
+            arrow.y < thief.y + thief.height
+          ) {
+            arrows.splice(arrowIndex, 1);
+            thieves.splice(thiefIndex, 1);
+          }
+        });
+      });
+
+      // update and draw thieves
+      thieves.forEach((thief, index) => {
+        thief.update();
+        thief.draw();
+
+        if (thief.x < funnel.x + funnel.width && thief.x + thief.width > funnel.x) {
+          health--;
+          thieves.splice(index, 1);
+        }
+      });
+
+      // health bar
+      ctx.fillStyle = "black";
+      ctx.font = "20px sans-serif";
+      ctx.fillText("Health: " + health, 20, 30);
+
+      if (health <= 0) {
+        ctx.fillStyle = "red";
+        ctx.font = "50px sans-serif";
+        ctx.fillText("GAME OVER", canvas.width / 2 - 150, canvas.height / 2);
+        return;
+      }
+
+      timeElapsed += 16;
+      requestAnimationFrame(gameLoop);
+    }
+
+    canvas.addEventListener("mousedown", () => {
+      charging = true;
+      chargeStart = performance.now();
+    });
+
+    canvas.addEventListener("mouseup", (e) => {
+      charging = false;
+      const chargeTime = Math.min(performance.now() - chargeStart, 2000);
+      const power = chargeTime / 20;
+      const angle = Math.atan2(e.clientY - (archer.y - 30), e.clientX - (archer.x + 20));
+      arrows.push(new Arrow(power, angle));
+    });
+
+    requestAnimationFrame(gameLoop);
+  </script>
+</body>
+</html>
+
